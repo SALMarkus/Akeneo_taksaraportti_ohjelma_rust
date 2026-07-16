@@ -1,0 +1,25 @@
+[package]
+name = "akeneo_taksaraportti_ohjelma"
+version = "1.0.0"
+edition = "2021"
+
+# HUOM: versiot on pinnattu tarkoituksella. Polarsin API muuttuu
+# julkaisujen välillä, ja tämä koodi on kirjoitettu 0.46-sarjaa vasten.
+# printpdf 0.8 muutti API:aan rajusti -> pysytään 0.7:ssä.
+[dependencies]
+polars = { version = "0.46", features = [
+    "lazy",
+    "csv",
+    "strings",
+    "regex",
+    "is_in",
+    "round_series",
+    "concat_str",
+] }
+rust_xlsxwriter = "0.79"
+printpdf = "0.7"
+serde_json = "1"
+chrono = "0.4"
+
+[profile.release]
+opt-level = 3
