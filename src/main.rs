@@ -17,6 +17,36 @@ use std::time::Duration;
 
 const HOME_FOLDER: &str = r"C:\Akeneo_Taksaraportti_ohjelma";
 
+/// Sarakkeet, jotka import-CSV:ssä on vähintään oltava. Ylimääräiset
+/// sarakkeet ovat sallittuja.
+const REQUIRED_COLUMNS: &[&str] = &[
+    "yksilointitunnus",
+    "kauppanimi",
+    "vahvuus",
+    "pakkauskoko_teksti",
+    "laite",
+    "laakemuoto_fi_FI",
+    "tukkuhinta",
+    "tukkuhinta_edellinen_taksa",
+    "verotonhinta",
+    "verollinenmyyntihinta",
+    "versionumero",
+    "muutostieto_ltk",
+    "hintamuutos_ltk",
+    "korvausluokka",
+    "reseptistatus",
+    "myyntiluvan_haltija",
+    "toimittajat",
+    "modified_external_kela_integration",
+    "laakemuoto_koodi_ja_selite",
+    "apteekkiveroperuste",
+    "markkinoija_ltk",
+    "poistumassa_ltk",
+    "hintaputki_ylin_hinta",
+    "viitehinta",
+    "tuotteen_tila",
+];
+
 fn print_separator() {
     println!("####################################");
 }
@@ -53,6 +83,49 @@ fn clear_folder(folder: &Path) {
     println!("{} Folder cleared successfully.", folder.display());
 }
 
+/// Tarkistaa, että import-CSV sisältää kaikki pakolliset sarakkeet.
+/// Otsikkorivi luetaan omana kevyenä lukunaan (ei rivien jäsennystä), koska
+/// varsinainen luku kaatuisi polarsin omaan virheeseen jo `schema_overwrite`
+/// -vaiheessa, jos `yksilointitunnus` puuttuu — silloin käyttäjä ei näkisi
+/// tätä viestiä.
+fn validate_csv_columns(file_path: &Path) -> PolarsResult<()> {
+    let header = CsvReadOptions::default()
+        .with_has_header(true)
+        .with_infer_schema_length(Some(0))
+        .with_n_rows(Some(0))
+        .with_parse_options(
+            CsvParseOptions::default()
+                .with_separator(b'|')
+                .with_encoding(CsvEncoding::Utf8),
+        )
+        .try_into_reader_with_file_path(Some(file_path.to_path_buf()))?
+        .finish()?;
+
+    let missing: Vec<&str> = REQUIRED_COLUMNS
+        .iter()
+        .copied()
+        .filter(|required| {
+            !header
+                .get_columns()
+                .iter()
+                .any(|column| column.name().as_str() == *required)
+        })
+        .collect();
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    println!("Input file schema is invalid");
+    println!("Tiedostosta puuttuu {} pakollista saraketta:", missing.len());
+    for name in &missing {
+        println!("  - {name}");
+    }
+    println!("Korjaa CSV-tiedosto ja käynnistä ohjelma uudelleen.");
+    sleep(Duration::from_secs(3));
+    exit(0);
+}
+
 fn read_csv_file(import_folder: &Path) -> Result<DataFrame, Box<dyn Error>> {
     let mut csv_files: Vec<PathBuf> = fs::read_dir(import_folder)?
         .flatten()
@@ -80,6 +153,8 @@ fn read_csv_file(import_folder: &Path) -> Result<DataFrame, Box<dyn Error>> {
     }
 
     let file_path = csv_files.remove(0);
+
+    validate_csv_columns(&file_path)?;
 
     // `yksilointitunnus` luetaan merkkijonona, kuten pandasin dtype-parametrissa.
     let schema_overwrite = Schema::from_iter([Field::new(
